@@ -1,0 +1,113 @@
+---
+title: "Practical Machine Learning course project"
+author: "Dan Huang"
+date: "27 Apr 2020"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+
+1. Data input and R package activation 
+
+```{r, results='hide'}
+
+pml.training <- read.csv("C:/Morphosys/Dan markdown/pml-training.csv", row.names=1)
+pml.testing <- read.csv("C:/Morphosys/Dan markdown/pml-testing.csv", row.names=1)
+
+.libPaths("C:/R/R-3.6.1/library")
+library("caret")
+library("randomForest")
+
+```
+
+
+2. Data Clearning
+
+```{r}
+
+Train <- pml.training[,colSums(is.na(pml.training))==0] ## to remove columns with NA values 
+Test <- pml.testing[, colSums(is.na(pml.testing))==0] ## to remove columns with NA values 
+summary(Train) 
+
+```
+The majority (> 99%) of observations of variables with prefix of "kurtosis", "skewness", " amplitude", "max" and "min" are missing values, therefore these variables will be removed in prediction.
+In addition, variables "raw_timestamp_part_1" and "raw_timestamp_part_2" are not needed for prediction and therefore be removed
+```{r}
+
+Train <- Train[, -c(11:19, 42:47, 51:59, 73:81)] 
+Train <- Train[, -c(2,3)]
+Test <- Test[, -c(2,3)]
+
+```
+
+
+3. Pre processing
+
+1) To check the nonZeroVar
+```{r}
+
+nsv <- nearZeroVar(Train, saveMetrics=TRUE, names = TRUE)
+print(nsv)
+
+```
+Variable "new_window" will be removed as it is a near Zero Variance predictor
+
+
+```{r}
+
+Train <- Train[, -c(3)]
+Test <- Test[, -c(3)]
+
+```
+
+
+2) To center the scale of continuous variables
+
+```{r}
+
+preObj <- preProcess(Train[, -c(56)], method = c("center", "scale"))
+Train_ <- predict(preObj, Train[, -c(56)])
+Trainingset <- cbind.data.frame(Train[, c(56)], Train_)
+names(Trainingset)[1] <- "Class"
+
+preObj2 <- preProcess(Test[, -c(56)], method = c("center", "scale"))
+Test_ <- predict(preObj2, Test[, -c(56)])
+Testingset <- cbind.data.frame(Test[, c(56)], Test_)
+names(Testingset)[1] <- "Class"
+
+```
+
+
+4. Data slicing and Predicting with random forest model 
+
+```{r}
+
+set.seed(2020)
+
+inTrain <- createDataPartition(y=Trainingset$Class, p=0.7, list = FALSE)
+Training <- Trainingset[inTrain,]
+Validation <- Trainingset[-inTrain,]
+
+modFit <- train(Class~ ., method = "rf",  data=Training, trControl = trainControl(method = "cv", number = 4), importance = TRUE)
+
+```
+
+
+
+5. Cross validation and predict for Testing data
+```{r}
+
+pred <- predict(modFit, Validation)
+print(confusionMatrix(Validation$Class,pred), digits = 3)
+
+```
+From the result we can see this model has good performance with >99% accuracy. Therefore we can use it for predicting the testing data.
+```{r}
+
+pred <- predict(modFit, Testingset)
+pred
+
+```
